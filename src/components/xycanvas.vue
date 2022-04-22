@@ -100,8 +100,8 @@ function drawStuff() {
     const canvas = document.getElementById("myCanvas") as HTMLCanvasElement
     const canvashide = document.getElementById("canvasoverflowhide")
     const ctx = canvas.getContext("2d")
-    if (ctx == null) {
-        throw TypeError("No canvas context")
+    if (ctx == null || canvashide == null) {
+        throw TypeError("No canvas context or canvashide element")
     }
 
     const gradStartX = 100
@@ -250,11 +250,8 @@ function drawStuff() {
 
     locusShadeArray.push([xcoords[0], ycoords[0]])
     locusShadeArray.push(xyToCanvasxy(-1, -1))
-
     locusShadeArray.push(xyToCanvasxy(1.5, 0))
-
     locusShadeArray.push(xyToCanvasxy(1.5, 1.5))
-
     locusShadeArray.push(xyToCanvasxy(-1, 1.5))
     let locusstr = ""
     for (let [x, y] of locusShadeArray) {
@@ -270,7 +267,6 @@ function drawStuff() {
         locusStrokeStr += `${xcoords[i].toFixed(1)}, ${ycoords[i].toFixed(1)} `
     }
     spectrumStrokePoints.value = locusStrokeStr
-    // console.log(locusStrokeStr)
 
     //
     // Label spectum points
@@ -415,16 +411,13 @@ function reScale() {
     drawStuff()
 }
 
-// watch(scroll, (new: number, old: number) => {
-// gradEndx.value = 0.4
-// gradEndy.value = 0.4
-// drawStuff();
-// });
-
 function setView() {
     const zoomfactor = 8 / Math.pow(zoom.value + 16, 1)
     // debugger
     const canvashide = document.getElementById("canvasoverflowhide")
+    if (canvashide == null) {
+        throw TypeError("No canvashide object")
+    }
     const aspect = canvashide?.offsetWidth / canvashide?.offsetHeight
     gradStartx.value = scroll.value / 100 - zoomfactor * aspect - 0.16
     gradEndx.value = scroll.value / 100 + zoomfactor * aspect - 0.16
