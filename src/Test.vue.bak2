@@ -1,0 +1,55 @@
+<script lang="ts">
+import { reactive } from 'vue'
+
+const state = reactive({
+  count: 0,
+  addid: 0,
+  sliderval: 1,
+  text: "",
+  list: [],
+  subtract: false,
+})
+
+function addaddme() {
+  // let cccount:number = 2;
+  // cccount = "hgf";
+  let mult: number = state.subtract ? -1 : 1;
+  state.count = state.count + parseFloat(state.text) * mult;
+  state.list.push({"key": state.addid, "count":state.count})
+  state.addid++;
+  if (state.list.length > 10) {
+    state.list.shift()
+  }
+  // state.count = String(state.subtract);
+}
+
+</script>
+
+<template>
+  <p>{{ list }}</p>
+  <input v-model="text" id="addme">
+  <input type="range" v-model="sliderval" min="1" max="9" >
+  <input type="checkbox" id="subtract" v-model="subtract">
+  
+  <label for="subtract">Subtract: {{ state.subtract }}</label>
+  <button @click="addaddme">Modify</button>
+  <p>
+    The count is "{{ state.count }}", which when doubled is "{{ state.double }}"
+  </p>
+  <p>
+    <ul>
+      <li v-for="litem of state.list" :key="litem.key">{{ litem.count }}</li>
+    </ul>
+  </p>
+</template>
+
+<style scoped>
+button {
+  font-weight: bold;
+  display: block;
+}
+input {
+  display: block
+}
+
+</style>

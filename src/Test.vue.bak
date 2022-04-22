@@ -1,0 +1,70 @@
+<script lang="ts">
+// import { reactive } from 'vue'
+export default {
+  data() {
+    return {
+      count: 0,
+      addid: 0,
+      sliderval: 1,
+      text: "",
+      list: [],
+      subtract: false,
+    }
+  },
+  methods: {
+    addaddme() {
+      let cccount:number = 2;
+      cccount = "hgf";
+      let mult: number = this.subtract ? -1 : 1;
+      this.count = this.count + parseFloat(this.text) * mult;
+      this.list.push({"key": this.addid, "count":this.count})
+      this.addid++;
+      if (this.list.length > 10) {
+        this.list.shift()
+      }
+      // this.count = String(this.subtract);
+    }
+  },
+  watch: {
+    sliderval(a: number, b: number) {
+      // this.count = a
+      this.text = a.toString()
+      this.addaddme()
+    }
+  },
+  computed: {
+    double() {
+      return this.count * 2
+    }
+  }
+}
+</script>
+
+<template>
+  <p>{{ list }}</p>
+  <input v-model="text" id="addme">
+  <input type="range" v-model="sliderval" min="1" max="9" >
+  <input type="checkbox" id="subtract" v-model="subtract">
+  
+  <label for="subtract">Subtract: {{ subtract }}</label>
+  <button @click="addaddme">Modify</button>
+  <p>
+    The count is "{{ count }}", which when doubled is "{{ double }}"
+  </p>
+  <p>
+    <ul>
+      <li v-for="litem of list" :key="litem.key">{{ litem.count }}</li>
+    </ul>
+  </p>
+</template>
+
+<style scoped>
+button {
+  font-weight: bold;
+  display: block;
+}
+input {
+  display: block
+}
+
+</style>
