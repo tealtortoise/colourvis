@@ -1,13 +1,17 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from "vue"
 import {
-    XYZ,
+    ColourXYZ,
     D65,
     D50,
     getSpectral,
     clamp,
     newFromxyY,
+    newFrom_sRGB,
+    newFromDaylightCCT,
+    newFromBlackbodyCCT,
     RGB,
+    xyY,
 } from "../colourlib"
 
 interface SpectrumPoint {
@@ -133,7 +137,6 @@ function drawStuff() {
         return [xcoord, ycoord]
     }
 
-    const colXYZ = new XYZ()
     for (let x = 0; x < gradWidth; x = x + xStep) {
         for (let y = 0; y <= gradHeight; y = y + yStep) {
             const xNorm = x / gradWidth
@@ -143,11 +146,9 @@ function drawStuff() {
             const yScaled =
                 yNorm * (gradEndy.value - gradStarty.value) + gradStarty.value
             const rgb: RGB = newFromxyY(
-                clamp(xScaled, 0, 1),
-                clamp(yScaled, 0, 1),
-                0.5
+                new xyY(xScaled, yScaled, 0.5).getClamped()
             )
-                .getsRGB({
+                .get_sRGB({
                     clampOutput: true,
                     preNormalise: true,
                 })
@@ -164,12 +165,9 @@ function drawStuff() {
     //
     //  Shade gamut triangle
     //
-    const bluePrimary = new XYZ()
-    bluePrimary.setsRGB(0, 0, 1)
-    const greenPrimary = new XYZ()
-    greenPrimary.setsRGB(0, 1, 0)
-    const redPrimary = new XYZ()
-    redPrimary.setsRGB(1, 0, 0)
+    const bluePrimary = newFrom_sRGB(new RGB(0, 0, 1))
+    const greenPrimary = newFrom_sRGB(new RGB(0, 1, 0))
+    const redPrimary = newFrom_sRGB(new RGB(1, 0, 0))
     const polypoints: Array<[number, number]> = [
         [-0.5, -0.5],
         [-0.5, 1.5],
@@ -189,20 +187,16 @@ function drawStuff() {
     ]
 
     let str: string = ""
-
     for (let point of polypoints) {
         var [xcoord, ycoord] = xyToCanvasxy(...point)
-
         str += `${xcoord},${ycoord} `
     }
 
     gamutShadePoints.value = str
-    // console.log(str)
 
     //
     // Stroke gamut triangle
     //
-    let first = false
     str = ""
     for (let point of strokepoints) {
         var [xcoord, ycoord] = xyToCanvasxy(...point)
@@ -217,10 +211,7 @@ function drawStuff() {
     const xcoords = []
     const ycoords = []
     for (let nm = 360; nm < 720; nm = nm + 2) {
-        const col = getSpectral(nm)
-        const xyY = col.getxyY()
-        const x = xyY.x
-        const y = xyY.y
+        const { x, y, Y } = getSpectral(nm).getxyY()
         var [xcoord, ycoord] = xyToCanvasxy(x, y)
         xcoords.push(xcoord)
         ycoords.push(ycoord)
@@ -235,7 +226,6 @@ function drawStuff() {
     for (let i = 0; i < xcoords.length; i++) {
         locusShadeArray.push([xcoords[i], ycoords[i]])
     }
-
     locusShadeArray.push([xcoords[0], ycoords[0]])
     locusShadeArray.push(xyToCanvasxy(-1, -1))
     locusShadeArray.push(xyToCanvasxy(1.5, 0))
@@ -279,17 +269,15 @@ function drawStuff() {
 
     let blackbodyStr = ""
     let daylightStr: string = ""
-
     for (let pass = 0; pass < 2; pass++) {
         const cctStart = pass % 2 ? 4000 : 1000
         for (let cct = cctStart; cct < 25000; cct += 100) {
-            const col = new XYZ()
             if (pass % 2 == 0) {
-                col.setBlackbodyCCT(cct, 1)
+                const col = newFromBlackbodyCCT(cct)
                 const [xcoord, ycoord] = xyToCanvasxy(...col.getxyY().get2())
                 blackbodyStr += `${xcoord.toFixed(1)},${ycoord.toFixed(1)} `
             } else {
-                col.setDaylightCCT(cct, 1)
+                const col = newFromDaylightCCT(cct)
                 const [xcoord, ycoord] = xyToCanvasxy(...col.getxyY().get2())
                 daylightStr += `${xcoord.toFixed(1)},${ycoord.toFixed(1)} `
             }
@@ -301,27 +289,24 @@ function drawStuff() {
     //
     // Plot Whitepoints
     //
-    colourLabels.value = []
-    let [x, y] = xyToCanvasxy(...D50.getxyY().get2())
-    colourLabels.value.push({
-        text: "D50",
-        x: x,
-        y: y,
-    })
-    ;[x, y] = xyToCanvasxy(...D65.getxyY().get2())
-    colourLabels.value.push({
-        text: "D65",
-        x: x,
-        y: y,
-    })
-    const rgbwhite = new XYZ()
-    rgbwhite.setBlackbodyCCT(2856)
-    ;[x, y] = xyToCanvasxy(...rgbwhite.getxyY().get2())
-    colourLabels.value.push({
-        text: "A",
-        x: x,
-        y: y,
-    })
+    // const labelArray = []
+    type Whitepoint = {
+        colour: ColourXYZ
+        label: string
+    }
+    const whitepoints: Whitepoint[] = [
+        { colour: D65, label: "D65" },
+        { colour: D50, label: "D50" },
+        { colour: newFromBlackbodyCCT(2856), label: "A" },
+    ]
+    colourLabels.value = whitepoints.map(
+        (whitepoint: Whitepoint): ColourLabel => {
+            const [x, y] = xyToCanvasxy(
+                ...(whitepoint.colour.getxyY().get2() as [number, number])
+            )
+            return { text: whitepoint.label, x, y }
+        }
+    )
 
     //
     // Gridlines
@@ -348,7 +333,7 @@ function drawStuff() {
                 })
                 xTicksAry.push({ num: xcoord, key: i })
             } else {
-                const xcoord = xyToCanvasxy(xtick, gradStarty.value)[0]
+                const [xcoord, _] = xyToCanvasxy(xtick, gradStarty.value)
                 xTicksMinorAry.push({ num: xcoord, key: i })
             }
             i++
@@ -373,7 +358,7 @@ function drawStuff() {
                 const jhg = { num: ycoord, key: i }
                 yTicksAry.push(jhg)
             } else {
-                let [xcoord, ycoord] = xyToCanvasxy(gradStartx.value, ytick)
+                let [_, ycoord] = xyToCanvasxy(gradStartx.value, ytick)
                 const jhg = { num: ycoord, key: i }
                 yTicksMinorAry.push(jhg)
             }
@@ -396,7 +381,7 @@ function reScale() {
 
 function setView() {
     const zoomfactor = 8 / Math.pow(zoom.value + 16, 1)
-    // debugger
+
     const canvashide = document.getElementById("canvasoverflowhide")
     if (canvashide == null) {
         throw TypeError("No canvashide object")
@@ -408,6 +393,7 @@ function setView() {
     gradEndy.value = scrolly.value / 100 + zoomfactor - 0.16
     drawStuff()
 }
+
 watch(scroll, (new_, old) => {
     setView()
 })
