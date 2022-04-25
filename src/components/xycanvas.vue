@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from "vue"
-import { XYZ, D65, D50, getSpectral, clamp } from "../colourlib"
-
-const col = new XYZ(D65.X, D65.Y, D65.Z)
-console.log(col.getsRGB())
-col.setxyY(0.333, 0.333, 1)
-console.log(col.getsRGB())
+import {
+    XYZ,
+    D65,
+    D50,
+    getSpectral,
+    clamp,
+    newFromxyY,
+    RGB,
+} from "../colourlib"
 
 interface SpectrumPoint {
     nm: number
@@ -106,18 +109,9 @@ function drawStuff() {
 
     const gradStartX = 100
     const gradStartY = 0
-    // const gradWidth = canvas.width * sF - 100
     const gradWidth = canvashide?.offsetWidth
-    // const gradHeight = canvas.height * sF - 100
     const gradHeight = canvashide?.offsetHeight
-    // const xStep = Math.min(
-    //     Math.max(4 / (gradEndx.value - gradStartx.value), 3),
-    //     16
-    // )
-    // const yStep = Math.min(
-    //     Math.max(4 / (gradEndy.value - gradStarty.value), 3),
-    //     16
-    // )
+
     const xStep = 20
     const yStep = 20
 
@@ -141,9 +135,6 @@ function drawStuff() {
 
     const colXYZ = new XYZ()
     for (let x = 0; x < gradWidth; x = x + xStep) {
-        let lastCol: string = "rgb(0, 0, 0)"
-
-        // const grd = ctx.createLinearGradient(x1, y1, x1, y2)
         for (let y = 0; y <= gradHeight; y = y + yStep) {
             const xNorm = x / gradWidth
             const yNorm = 1.0 - y / gradHeight
@@ -151,26 +142,23 @@ function drawStuff() {
                 xNorm * (gradEndx.value - gradStartx.value) + gradStartx.value
             const yScaled =
                 yNorm * (gradEndy.value - gradStarty.value) + gradStarty.value
-            colXYZ.setxyY(clamp(xScaled, 0, 1), clamp(yScaled, 0, 1), 0.5)
-            const rgb_unscaled = colXYZ.getsRGB(true, true, 0.98)
-            const mult = 1
-            const red = rgb_unscaled.R * 255 * mult
-            const green = rgb_unscaled.G * 255 * mult
-            const blue = rgb_unscaled.B * 255 * mult
-            const colStr = `rgb(${red}, ${green}, ${blue})`
+            const rgb: RGB = newFromxyY(
+                clamp(xScaled, 0, 1),
+                clamp(yScaled, 0, 1),
+                0.5
+            )
+                .getsRGB({
+                    clampOutput: true,
+                    preNormalise: true,
+                })
+                .getScaled(255)
 
-            const yClipped = Math.min(yStep, gradHeight - y - gradStartY)
+            // const yClipped = Math.min(yStep, gradHeight - y - gradStartY)
             const x1 = x
-            const x2 = x1 + yStep
             const y1 = y
-            const y2 = y1 + yClipped
-            lastCol = colStr
-            ctx.fillStyle = colStr
+            ctx.fillStyle = `rgb(${rgb.R}, ${rgb.G}, ${rgb.B})`
             ctx.fillRect(x1 / sF, y1 / sF, xStep / sF, yStep / sF)
-            // console.log(x1 / sF, y1 / sF, xStep / sF)
         }
-        // ctx.fillStyle = grd
-        // ctx.fillRect(x + gradStartX, gradStartY, xStep, gradHeight)
     }
 
     //
@@ -280,11 +268,6 @@ function drawStuff() {
                 nms[i] == 640 ||
                 nms[i] == 450
             ) {
-                if (nms[i] < 520) {
-                    var offsetX = 17
-                } else {
-                    var offsetX = 17
-                }
                 spectrumPoints.value.push({
                     nm: nms[i],
                     x: xcoords[i],

@@ -25,6 +25,16 @@ abstract class ThreeDimColourFormat {
         this.d3 = _c
     }
 
+    protected abstract create(d1: number, d2: number, d3: number): this
+
+    getScaled(scaleFactor: number) {
+        return this.create(
+            this.d1 * scaleFactor,
+            this.d2 * scaleFactor,
+            this.d3 * scaleFactor
+        )
+    }
+
     clip() {
         this.d1 = clamp(this.d1, 0, 1)
         this.d2 = clamp(this.d2, 0, 1)
@@ -81,6 +91,9 @@ class xyY extends ThreeDimColourFormat {
     get Y() {
         return this.d3
     }
+    create(d1: number, d2: number, d3: number) {
+        return new xyY(d1, d2, d3) as this
+    }
 }
 class RGB extends ThreeDimColourFormat {
     get R() {
@@ -91,6 +104,9 @@ class RGB extends ThreeDimColourFormat {
     }
     get B() {
         return this.d3
+    }
+    create(d1: number, d2: number, d3: number) {
+        return new RGB(d1, d2, d3) as this
     }
 }
 
@@ -107,13 +123,20 @@ function dotProduct(vector: number[], matrix: number[][]): number[] {
 }
 
 class XYZ extends ThreeDimColourFormat {
-    getsRGB(clamp_ = true, normalise = false, normaliseTarget = 1.0): RGB {
+    protected create(d1: number, d2: number, d3: number): this {
+        return new XYZ(d1, d2, d3) as this
+    }
+
+    getsRGB({
+        clampOutput = true,
+        preNormalise = false,
+        normaliseTarget = 1,
+    } = {}): RGB {
         const sRGBMatrix = [
             [3.2404542, -1.5371385, -0.4985314],
             [-0.969266, 1.8760108, 0.041556],
             [0.0556434, -0.2040259, 1.0572252],
         ]
-
         const aa = 12.92
         const bb = 1.055
         const cc = 0.055
@@ -123,14 +146,14 @@ class XYZ extends ThreeDimColourFormat {
 
         const transformed = dotProduct(this.asArray(), sRGBMatrix)
         let mult = 1
-        if (normalise) {
+        if (preNormalise) {
             const maxVal = Math.max(...transformed)
             mult = (1 / maxVal) * normaliseTarget
         }
-        let gammaCorrected = transformed.map((a_unmult: number) => {
+        const [R, G, B] = transformed.map((a_unmult: number) => {
             const a = a_unmult * mult
             let clamped = a
-            if (clamp_) {
+            if (clampOutput) {
                 let clamped = clamp(a, 0, 1)
                 if (clamped != a) {
                     hasClamped = true
@@ -143,12 +166,7 @@ class XYZ extends ThreeDimColourFormat {
             }
         })
 
-        // if (hasClamped){
-        const rgb = new RGB(
-            gammaCorrected[0],
-            gammaCorrected[1],
-            gammaCorrected[2]
-        )
+        const rgb = new RGB(R, G, B)
         rgb.hasClamped = hasClamped
         return rgb
     }
@@ -253,6 +271,12 @@ class XYZ extends ThreeDimColourFormat {
     }
 }
 
+function newFromxyY(x: number, y: number, Y: number = 1): XYZ {
+    const X = (x * Y) / y
+    const Z = ((1 - x - y) * Y) / y
+    return new XYZ(X, Y, Z)
+}
+
 // class sRGB extends ThreeDimColourFormat {
 //     r = this.d1
 //     g = this.d2
@@ -275,5 +299,5 @@ function getSpectral(nm: number): XYZ {
     )
 }
 
-export { XYZ, D65, D50, getSpectral, xyY, clamp }
+export { XYZ, D65, D50, getSpectral, xyY, clamp, newFromxyY, RGB }
 // export type { RGB }
