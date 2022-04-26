@@ -4,30 +4,50 @@ import {
     ColourXYZ,
     D65,
     D50,
-    getSpectral,
+    newSpectralNM,
     clamp,
-    newFromxyY,
+    newFrom_xyY,
     newFrom_sRGB,
-    newFromDaylightCCT,
-    newFromBlackbodyCCT,
+    newDaylight,
+    newBlackbody,
     RGB,
     xyY,
 } from "../colourlib"
 
-interface SpectrumPoint {
+type SpectrumPoint = {
     nm: number
     x: number
     y: number
 }
-interface AxisLabel {
+type AxisLabel = {
     text: string
     x: number
     y: number
 }
-interface ColourLabel {
+type ColourLabel = {
     text: string
     x: number
     y: number
+}
+
+function* range(start: number, end: number, step = 1) {
+    for (let i = start; i < end; i += step) {
+        yield i
+    }
+}
+function* range2d(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    stepX = 1,
+    stepY = 1
+) {
+    for (let x = startX; x < endX; x += stepX) {
+        for (let y = startY; y < endY; y += stepY) {
+            yield { x, y }
+        }
+    }
 }
 
 const spectrumPoints = ref(<SpectrumPoint[]>[])
@@ -67,7 +87,8 @@ const scrolly = ref(50)
 const zoom = ref(20)
 
 const sF = 20
-interface axisTicks {
+
+type axisTicks = {
     figures: number
     step: number
     subDivs: number
@@ -86,18 +107,13 @@ function getAxisTicks(axisIsY = false): axisTicks {
     let step = 0.2
     let subDivs = 4
 
-    while (span / stepOptions[stepIndx] < 6) {
+    while (span / stepOptions[stepIndx] < 6 && stepIndx <= 7) {
         stepIndx++
-        // console.log(span, step)
     }
     step = stepOptions[stepIndx]
     subDivs = subDivsOptions[stepIndx]
-    let figures = 1
-    if (step < 0.025) {
-        figures = 2
-    }
     return {
-        figures: figures,
+        figures: step < 0.1 ? 2 : 1,
         step: step,
         subDivs: subDivs,
     }
@@ -137,29 +153,30 @@ function drawStuff() {
         return [xcoord, ycoord]
     }
 
-    for (let x = 0; x < gradWidth; x = x + xStep) {
-        for (let y = 0; y <= gradHeight; y = y + yStep) {
-            const xNorm = x / gradWidth
-            const yNorm = 1.0 - y / gradHeight
-            const xScaled =
-                xNorm * (gradEndx.value - gradStartx.value) + gradStartx.value
-            const yScaled =
-                yNorm * (gradEndy.value - gradStarty.value) + gradStarty.value
-            const rgb: RGB = newFromxyY(
-                new xyY(xScaled, yScaled, 0.5).getClamped()
-            )
-                .get_sRGB({
-                    clampOutput: true,
-                    preNormalise: true,
-                })
-                .getScaled(255)
-
-            // const yClipped = Math.min(yStep, gradHeight - y - gradStartY)
-            const x1 = x
-            const y1 = y
-            ctx.fillStyle = `rgb(${rgb.R}, ${rgb.G}, ${rgb.B})`
-            ctx.fillRect(x1 / sF, y1 / sF, xStep / sF, yStep / sF)
-        }
+    for (let { x: xcoord, y: ycoord } of range2d(
+        0,
+        0,
+        gradWidth,
+        gradHeight,
+        xStep,
+        yStep
+    )) {
+        const xNorm = xcoord / gradWidth
+        const yNorm = 1.0 - ycoord / gradHeight
+        const xScaled =
+            xNorm * (gradEndx.value - gradStartx.value) + gradStartx.value
+        const yScaled =
+            yNorm * (gradEndy.value - gradStarty.value) + gradStarty.value
+        const colour_xyY = new xyY(xScaled, yScaled, 0.5).getClamped()
+        const colourRGB = newFrom_xyY(colour_xyY)
+            .get_sRGB({
+                clampOutput: true,
+                preNormalise: true,
+            })
+            .getScaled(255)
+        // const yClipped = Math.min(yStep, gradHeight - y - gradStartY)
+        ctx.fillStyle = `rgb(${colourRGB.R}, ${colourRGB.G}, ${colourRGB.B})`
+        ctx.fillRect(xcoord / sF, ycoord / sF, xStep / sF, yStep / sF)
     }
 
     //
@@ -186,36 +203,37 @@ function drawStuff() {
         bluePrimary.getxyY().get2(),
     ]
 
-    let str: string = ""
+    let shadeStr: string = ""
     for (let point of polypoints) {
         var [xcoord, ycoord] = xyToCanvasxy(...point)
-        str += `${xcoord},${ycoord} `
+        shadeStr += `${xcoord},${ycoord} `
     }
 
-    gamutShadePoints.value = str
+    gamutShadePoints.value = shadeStr
 
     //
     // Stroke gamut triangle
     //
-    str = ""
+    let strokeStr = ""
     for (let point of strokepoints) {
         var [xcoord, ycoord] = xyToCanvasxy(...point)
-        str += `${xcoord},${ycoord} `
+        strokeStr += `${xcoord},${ycoord} `
     }
-    gamutStrokePoints.value = str
+    gamutStrokePoints.value = strokeStr
 
     //
     // Get spectral locus points
     //
-    const nms = []
-    const xcoords = []
-    const ycoords = []
-    for (let nm = 360; nm < 720; nm = nm + 2) {
-        const { x, y, Y } = getSpectral(nm).getxyY()
-        var [xcoord, ycoord] = xyToCanvasxy(x, y)
-        xcoords.push(xcoord)
-        ycoords.push(ycoord)
-        nms.push(nm)
+    type spectrumDatum = {
+        nm: number
+        xcoord: number
+        ycoord: number
+    }
+    const spectrumData: spectrumDatum[] = []
+    for (let nm of range(newSpectralNM.min, newSpectralNM.max, 2)) {
+        const { x, y, Y } = newSpectralNM(nm).getxyY()
+        const [xcoord, ycoord] = xyToCanvasxy(x, y)
+        spectrumData.push({ nm, xcoord, ycoord })
     }
 
     //
@@ -223,10 +241,10 @@ function drawStuff() {
     //
     const locusShadeArray = <number[][]>[]
     locusShadeArray.push(xyToCanvasxy(-1, -1))
-    for (let i = 0; i < xcoords.length; i++) {
-        locusShadeArray.push([xcoords[i], ycoords[i]])
+    for (const datum of spectrumData) {
+        locusShadeArray.push([datum.xcoord, datum.ycoord])
     }
-    locusShadeArray.push([xcoords[0], ycoords[0]])
+    locusShadeArray.push([spectrumData[0].xcoord, spectrumData[0].ycoord])
     locusShadeArray.push(xyToCanvasxy(-1, -1))
     locusShadeArray.push(xyToCanvasxy(1.5, 0))
     locusShadeArray.push(xyToCanvasxy(1.5, 1.5))
@@ -240,51 +258,40 @@ function drawStuff() {
     //
     // Plot spectral locus
     //
-    let locusStrokeStr = ""
-    for (let i = 0; i < xcoords.length; i++) {
-        locusStrokeStr += `${xcoords[i].toFixed(1)}, ${ycoords[i].toFixed(1)} `
-    }
-    spectrumStrokePoints.value = locusStrokeStr
+    spectrumStrokePoints.value = spectrumData.reduce((a, d) => {
+        return a + `${d.xcoord.toFixed(1)}, ${d.ycoord.toFixed(1)} `
+    }, "")
 
     //
     // Label spectum points
     //
-    spectrumPoints.value = []
-    for (let i = 0; i < xcoords.length; i++) {
-        if (nms[i] % 10 == 0) {
-            if (
-                (nms[i] >= 470 && nms[i] <= 620) ||
-                nms[i] == 700 ||
-                nms[i] == 640 ||
-                nms[i] == 450
-            ) {
-                spectrumPoints.value.push({
-                    nm: nms[i],
-                    x: xcoords[i],
-                    y: ycoords[i],
-                })
-            }
-        }
-    }
+    spectrumPoints.value = spectrumData
+        .filter((d) => {
+            return (
+                (d.nm % 10 == 0 && d.nm >= 470 && d.nm <= 620) ||
+                [700, 640, 450].includes(d.nm)
+            )
+        })
+        .map((d) => ({
+            nm: d.nm,
+            x: d.xcoord,
+            y: d.ycoord,
+        }))
 
-    let blackbodyStr = ""
-    let daylightStr: string = ""
-    for (let pass = 0; pass < 2; pass++) {
-        const cctStart = pass % 2 ? 4000 : 1000
-        for (let cct = cctStart; cct < 25000; cct += 100) {
-            if (pass % 2 == 0) {
-                const col = newFromBlackbodyCCT(cct)
-                const [xcoord, ycoord] = xyToCanvasxy(...col.getxyY().get2())
-                blackbodyStr += `${xcoord.toFixed(1)},${ycoord.toFixed(1)} `
-            } else {
-                const col = newFromDaylightCCT(cct)
-                const [xcoord, ycoord] = xyToCanvasxy(...col.getxyY().get2())
-                daylightStr += `${xcoord.toFixed(1)},${ycoord.toFixed(1)} `
-            }
+    //
+    // Plot blackbody and daylight loci
+    //
+    const out = [false, true].map((isDaylight): string => {
+        let str = ""
+        const factory = isDaylight ? newDaylight : newBlackbody
+        for (let k = factory.minK; k <= factory.maxK; k += 100) {
+            const colour: ColourXYZ = factory(k)
+            const [xcoord, ycoord] = xyToCanvasxy(...colour.getxyY().get2())
+            str += `${xcoord.toFixed(1)},${ycoord.toFixed(1)} `
         }
-    }
-    blackbodyPoints.value = blackbodyStr
-    daylightPoints.value = daylightStr
+        return str
+    })
+    ;[daylightPoints.value, blackbodyPoints.value] = out
 
     //
     // Plot Whitepoints
@@ -297,13 +304,11 @@ function drawStuff() {
     const whitepoints: Whitepoint[] = [
         { colour: D65, label: "D65" },
         { colour: D50, label: "D50" },
-        { colour: newFromBlackbodyCCT(2856), label: "A" },
+        { colour: newBlackbody(2856), label: "A" },
     ]
     colourLabels.value = whitepoints.map(
         (whitepoint: Whitepoint): ColourLabel => {
-            const [x, y] = xyToCanvasxy(
-                ...(whitepoint.colour.getxyY().get2() as [number, number])
-            )
+            const [x, y] = xyToCanvasxy(...whitepoint.colour.getxyY().get2())
             return { text: whitepoint.label, x, y }
         }
     )
@@ -386,7 +391,7 @@ function setView() {
     if (canvashide == null) {
         throw TypeError("No canvashide object")
     }
-    const aspect = canvashide?.offsetWidth / canvashide?.offsetHeight
+    const aspect = canvashide.offsetWidth / canvashide.offsetHeight
     gradStartx.value = scroll.value / 100 - zoomfactor * aspect - 0.16
     gradEndx.value = scroll.value / 100 + zoomfactor * aspect - 0.16
     gradStarty.value = scrolly.value / 100 - zoomfactor - 0.16
